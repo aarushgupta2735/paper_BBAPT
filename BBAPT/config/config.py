@@ -7,7 +7,6 @@ class appConfig():
     allow_short_selling: bool = False
     technical_indicator_list: list = field(default_factory=lambda: ['MACD','RSI_14','CCI_20','SMA_20','EMA_20']) #,'ADX_14'
     transaction_cost: float = 0.001
-    train_initial_date: str = "2020-09-23"
     ticker_list: list[str]= field(default_factory=lambda: ["BTC-USD", "ETH-USD", "LTC-USD", "LINK-USD", "BCH-USD", "UNI-USD", "XLM-USD", "FIL-USD", "BNB-USD", "SOL-USD", "XRP-USD", "ADA-USD", "SHIB-USD", "TON-USD", "DOGE-USD", "AVAX-USD", "TRX-USD", "DOT-USD", "MATIC-USD", "ETC-USD"])
     train_starting_date:str = "2020-09-22" #Paper date: 2019-02-06, #All assets are available: 2020-09-22
     train_ending_date:str = "2022-06-07"

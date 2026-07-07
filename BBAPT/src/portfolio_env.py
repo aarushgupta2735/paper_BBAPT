@@ -26,7 +26,7 @@ class PortfolioEnv(gym.Env):
         self.ra_n = config.ra_n
 
         self.dates = sorted(self.data['ds'].unique().tolist())
-        self.initial_date = self.dates[1]
+        self.initial_date = self.dates[0]
         self.date = self.initial_date
         self.current_step = 0
         self.n_steps = len(self.dates)
@@ -41,12 +41,17 @@ class PortfolioEnv(gym.Env):
         return current_row[features].to_numpy(dtype=np.float32)
 
     def step(self, action):
-        current_row = self.data[self.data['ds'] == self.date].sort_values('unique_id')
-        current_return = current_row['y'].to_numpy(dtype=np.float32)
-        std_deviation = current_row['std_dev'].to_numpy(dtype=np.float32)
+        next_date = self.dates[self.current_step+1]
+        current_row = self.data[self.data['ds'] == next_date].sort_values('unique_id')
 
-        profit = (np.multiply(action, current_return).sum()) - (np.abs(action - self.prev_action) * self.transaction_cost).sum()
-        reward = profit / std_deviation.mean()
+        current_return = current_row['y'].to_numpy(dtype=np.float32)
+        variance = np.square(current_row['std_dev'].to_numpy(dtype=np.float32))
+        
+        profit = (np.multiply(np.transpose(action), current_return).sum()) - (np.transpose(np.abs(action - self.prev_action)) * self.transaction_cost).sum()
+        std = np.sqrt(np.multiply(np.multiply(action, variance), np.transpose(action)).sum())
+        
+        reward = profit / std if std != 0 else 0
+
         self.balance += profit
 
         self.current_step += 1
@@ -69,5 +74,6 @@ class PortfolioEnv(gym.Env):
         self.balance = self.initial_balance
         return self._get_observation(self.date), self._get_info()
 
-    def _get_info(self):
-        return {'balance': self.balance, 'date': self.date}
+    def _get_info(self): 
+        ''' Returns the current balance and date as a dictionary. '''
+        return {'balance':self.balance, 'date':self.date} 

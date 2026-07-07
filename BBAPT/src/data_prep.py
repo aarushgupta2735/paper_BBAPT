@@ -10,20 +10,20 @@ def add_technical_indicators(df,ticker):
     macd_int = MACD(close=df[('Close',ticker)], window_fast=12, window_slow=26, window_sign=9)
     df[('MACD',ticker)] = macd_int.macd()
 
-    # 3. Relative Strength Index (RSI)
+    # Relative Strength Index (RSI)
     df[('RSI_14',ticker)] = RSIIndicator(close=df[('Close',ticker)], window=14).rsi()
 
-    # 4. Commodity Channel Index (CCI)
+    # Commodity Channel Index (CCI)
     df[('CCI_20',ticker)] = CCIIndicator(high=df[('High',ticker)], low=df[('Low',ticker)], close=df[('Close',ticker)], window=20).cci()
 
-    # 5. Average Directional Index (ADX)    
+    # Average Directional Index (ADX)    
     #adx_int = ADXIndicator(high=df[('High',ticker)], low=df[('Low',ticker)], close=df[('Close',ticker)], window=14)
     #df[('ADX_14',ticker)] = adx_int.adx()
 
-    # 6. Simple Moving Average (SMA)
+    # Simple Moving Average (SMA)
     df[('SMA_20',ticker)] = SMAIndicator(close=df[('Close',ticker)], window=20).sma_indicator()
 
-    # 7. Exponential Moving Average (EMA)
+    # Exponential Moving Average (EMA)
     df[('EMA_20',ticker)] = EMAIndicator(close=df[('Close',ticker)], window=20).ema_indicator()
     return df
 

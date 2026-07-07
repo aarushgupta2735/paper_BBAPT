@@ -16,7 +16,7 @@ from gymnasium.utils.env_checker import check_env
 from BBAPT.config.config import appConfig
 from BBAPT.src.data_prep import data_for_timesnet, data_prep    
 from BBAPT.src.portfolio_env import PortfolioEnv
-
+from BBAPT .src.behavioral_map import apply_behavioural_mapping, _apply_overconfidence, _apply_loss_averse
 #setup config
 config = appConfig(
     initial_balance = 100000,
@@ -50,7 +50,7 @@ train_df = data_prep(config.train_starting_date, config.train_ending_date, confi
 test_df = data_prep(config.test_starting_date, config.test_ending_date, config.ticker_list)
 
 
-#---TimesNet prediction----
+#---TimesNet Forecasting----
 model = TimesNet(h=1,
                 input_size=24, #Context Window
                 hidden_size = 16,
@@ -63,34 +63,26 @@ model = TimesNet(h=1,
                 early_stop_patience_steps=2)
 nf = NeuralForecast(
     models=[model],
-    freq='B'
+    freq='D'
 )
+nf.fit(df=data_for_timesnet(train_df), val_size=1)
 
-
-list_forecasts = []
-for ticker in config.ticker_list:
-    nf.fit(df=data_for_timesnet(train_df.loc[train_df['unique_id'] == ticker]),val_size=1)
-    forecasts = nf.predict()
-    list_forecasts.append(forecasts)
-
-forecast = pd.concat(list_forecasts,ignore_index=True)
-forecast['avg_return'] = forecast.groupby('ds')['TimesNet'].transform('mean')
 #--------------------------
 
 #Portfolio Environment
 gym.register(
-    id='PortfolioEnv-v1',
+    id='PortfolioEnv-v4',
     entry_point=PortfolioEnv,
     kwargs={'data': train_df, 'config': config}
 )
-env = gym.make('PortfolioEnv-v1') 
+env = gym.make('PortfolioEnv-v4')
 try:
-    check_env(env)
+    check_env(env.unwrapped)
     print("Environment passes all checks!")
 except Exception as e:
     print(f"Environment has issues: {e}")
 
-# 1. Training Loop
+# DRL Agent Training Loop
 print("--- Training RL Model ---")
 model_rl = A2C('MlpPolicy', env, verbose=1)
 model_rl.learn(total_timesteps=10000)
@@ -107,8 +99,14 @@ test_env = gym.make('PortfolioEnv-test-v1')
 
 obs, info = test_env.reset()
 done = False
+date = info['date']
+
 while not done:
     action, _states = model_rl.predict(obs)
+    forecast = nf.predict(df = data_for_timesnet(test_df[test_df['ds']<date]))
+    avg_return = forecast['TimesNet'].mean()
+    action = apply_behavioural_mapping(action, avg_return,test_df,date,config)
     obs, reward, done, truncated, info = test_env.step(action)
+    date = info['date']
 
 print(f"Inference completed! Final portfolio balance: {info['balance']:.2f}")
