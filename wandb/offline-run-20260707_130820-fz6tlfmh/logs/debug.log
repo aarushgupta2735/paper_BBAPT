@@ -1,0 +1,23 @@
+2026-07-07 13:08:20,252 INFO    MainThread:25288 [wandb_setup.py:_flush():81] Current SDK version is 0.28.0
+2026-07-07 13:08:20,253 INFO    MainThread:25288 [wandb_setup.py:_flush():81] Configure stats pid to 25288
+2026-07-07 13:08:20,256 INFO    MainThread:25288 [wandb_setup.py:_flush():81] Loading settings from environment variables
+2026-07-07 13:08:20,258 INFO    MainThread:25288 [wandb_init.py:setup_run_log_directory():725] Logging user logs to /mnt/c/Users/akgup/Documents/Obsidian Backup/Vault/Files/DL and NLP in Finance/Paper Implementation BBAPT/wandb/offline-run-20260707_130820-fz6tlfmh/logs/debug.log
+2026-07-07 13:08:20,260 INFO    MainThread:25288 [wandb_init.py:setup_run_log_directory():726] Logging internal logs to /mnt/c/Users/akgup/Documents/Obsidian Backup/Vault/Files/DL and NLP in Finance/Paper Implementation BBAPT/wandb/offline-run-20260707_130820-fz6tlfmh/logs/debug-internal.log
+2026-07-07 13:08:20,264 INFO    MainThread:25288 [wandb_init.py:init():768] calling init triggers
+2026-07-07 13:08:20,265 INFO    MainThread:25288 [wandb_init.py:init():773] wandb.init called with sweep_config: {}
+config: {'initial_balance': 100000, 'allow_short_selling': False, 'technical_indicator_list': ['MACD', 'RSI_14', 'CCI_20', 'SMA_20', 'EMA_20'], 'transaction_cost': 0.001, 'ticker_list': ['BTC-USD', 'ETH-USD', 'LTC-USD', 'LINK-USD', 'BCH-USD', 'UNI-USD', 'XLM-USD', 'FIL-USD', 'BNB-USD', 'SOL-USD', 'XRP-USD', 'ADA-USD', 'SHIB-USD', 'TON-USD', 'DOGE-USD', 'AVAX-USD', 'TRX-USD', 'DOT-USD', 'MATIC-USD', 'ETC-USD'], 'train_starting_date': '2020-09-22', 'train_ending_date': '2022-06-07', 'test_starting_date': '2022-06-08', 'test_ending_date': '2023-01-03', 'THRESHOLD_PARAMETER': 0.015, 'oc_upper_threshold': 0.01, 'oc_lower_threshold': -0.01, 'oc_k_loss': 0.1, 'oc_k_gain': 0.1, 'oc_n': 0.725, 'ra_upper_threshold': 0.01, 'ra_lower_threshold': -0.01, 'ra_k_loss': 0.1, 'ra_k_gain': 0.1, 'ra_n': 1.22, 'n_stocks': 20, 'n_indicators': 5, '_wandb': {}}
+2026-07-07 13:08:20,266 INFO    MainThread:25288 [wandb_init.py:init():816] starting backend
+2026-07-07 13:08:20,550 INFO    MainThread:25288 [wandb_init.py:init():831] sending inform_init request
+2026-07-07 13:08:20,897 INFO    MainThread:25288 [wandb_init.py:init():836] backend started and connected
+2026-07-07 13:08:20,902 INFO    MainThread:25288 [wandb_init.py:init():906] updated telemetry
+2026-07-07 13:08:21,203 INFO    MainThread:25288 [wandb_init.py:init():929] communicating run to backend with 90.0 second timeout
+2026-07-07 13:08:21,213 INFO    MainThread:25288 [wandb_init.py:init():974] starting run threads in backend
+2026-07-07 13:08:21,603 INFO    MainThread:25288 [wandb_run.py:_console_start():2523] atexit reg
+2026-07-07 13:08:21,605 INFO    MainThread:25288 [wandb_run.py:_redirect():2373] redirect: wrap_raw
+2026-07-07 13:08:21,609 INFO    MainThread:25288 [wandb_run.py:_redirect():2442] Wrapping output streams.
+2026-07-07 13:08:21,610 INFO    MainThread:25288 [wandb_run.py:_redirect():2465] Redirects installed.
+2026-07-07 13:08:21,619 INFO    MainThread:25288 [wandb_init.py:init():1012] run started, returning control to user process
+2026-07-07 13:08:26,920 INFO    MainThread:25288 [wandb_run.py:_finish():2285] finishing run BBAPT/fz6tlfmh
+2026-07-07 13:08:26,933 INFO    MainThread:25288 [wandb_run.py:_atexit_cleanup():2490] got exitcode: 0
+2026-07-07 13:08:26,942 INFO    MainThread:25288 [wandb_run.py:_restore():2472] restore
+2026-07-07 13:08:26,945 INFO    MainThread:25288 [wandb_run.py:_restore():2478] restore done

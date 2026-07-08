@@ -41,7 +41,7 @@ def data_prep(starting_date, ending_date,ticker_list):
     data = data[data['ds']!=data['ds'].min()]
     nan_dates = data.loc[data.isna().any(axis=1),'ds'].unique()
     data = data[~data['ds'].isin(nan_dates)]
-    return data, len(nan_dates)
+    return data
 
 def data_for_timesnet(data):
     return data[['ds', 'y', 'unique_id']]

@@ -121,8 +121,9 @@ def main():
             max_steps=100,
             val_check_steps=50,
             early_stop_patience_steps=2,
+            enable_checkpointing=True
         )
-        nf = NeuralForecast(models=[model], freq="D")
+        nf = NeuralForecast(models=[model], freq="D",)
         nf.fit(df=data_for_timesnet(train_df), val_size=1)
         log_wandb_metrics(
             wandb_module,
@@ -167,13 +168,14 @@ def main():
 
         while not done:
             action, _states = model_rl.predict(obs)
-            forecast = nf.predict(df=data_for_timesnet(test_df[test_df["ds"] < date]))
+            forecast = nf.predict(df=data_for_timesnet(test_df[test_df["ds"] <= date]))
             avg_return = forecast["TimesNet"].mean()
             action = apply_behavioural_mapping(action, avg_return, test_df, date, config)
             obs, reward, done, truncated, info = test_env.step(action)
             date = info["date"]
 
         final_balance = float(info["balance"])
+        sharpe_ratio = float(info['sharpe_ratio'])
         print(f"Inference completed! Final portfolio balance: {final_balance:.2f}")
         log_wandb_metrics(
             wandb_module,
@@ -181,6 +183,7 @@ def main():
                 "eval/final_balance": final_balance,
                 "eval/final_profit": final_balance - config.initial_balance,
                 "run/duration_seconds": perf_counter() - run_started_at,
+                "eval/sharpe_ratio": sharpe_ratio,
             },
         )
     except Exception as exc:

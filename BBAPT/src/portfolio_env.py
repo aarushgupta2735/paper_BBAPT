@@ -29,12 +29,13 @@ class PortfolioEnv(gym.Env):
         self.initial_date = self.dates[0]
         self.date = self.initial_date
         self.current_step = 0
-        self.n_steps = len(self.dates)
+        self.n_steps = len(self.dates)-1
 
         self.action_space = gym.spaces.Box(low=-1 if self.allow_short_selling else 0, high=1, shape=(self.n_assets,), dtype=np.float32)
         self.prev_action = np.ones(self.n_assets) / self.n_assets
         self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(self.n_assets, 1 + self.n_technical_indicators), dtype=np.float32)
 
+        self.sharpe_ratio = 0.0
     def _get_observation(self, date):
         current_row = self.data[self.data['ds'] == date].sort_values('unique_id')
         features = ['y'] + self.technical_indicators_list
@@ -49,13 +50,15 @@ class PortfolioEnv(gym.Env):
         
         profit = (np.multiply(np.transpose(action), current_return).sum()) - (np.transpose(np.abs(action - self.prev_action)) * self.transaction_cost).sum()
         std = np.sqrt(np.multiply(np.multiply(action, variance), np.transpose(action)).sum())
-        
         reward = profit / std if std != 0 else 0
+
+        self.sharpe_ratio = (self.sharpe_ratio*(self.current_steps)+reward)/self.current_steps+1 
 
         self.balance += profit
 
         self.current_step += 1
-        done = self.current_step >= self.n_steps
+
+        done = self.current_step>= self.n_steps
 
         if not done:
             self.date = self.dates[self.current_step]
@@ -76,4 +79,4 @@ class PortfolioEnv(gym.Env):
 
     def _get_info(self): 
         ''' Returns the current balance and date as a dictionary. '''
-        return {'balance':self.balance, 'date':self.date} 
+        return {'balance':self.balance, 'date':self.date, 'sharpe_ratio':self.sharpe_ratio} 
