@@ -35,7 +35,6 @@ def data_prep(starting_date, ending_date,ticker_list):
     for ticker in ticker_list:
         data = add_technical_indicators(data,ticker)
     data = data.stack(level = 'Ticker').reset_index()
-    data['std_dev'] = data.groupby('Ticker')['Returns'].expanding().std().reset_index(level=0, drop=True)
     data = data.sort_values(by = ['Date','Ticker'])
     data.rename(columns = {'Date':'ds', 'Returns':'y','Ticker':'unique_id'}, inplace = True)
     data = data[data['ds']!=data['ds'].min()]

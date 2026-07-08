@@ -13,7 +13,7 @@ from BBAPT.config.config import appConfig
 from BBAPT.src.behavioral_map import apply_behavioural_mapping
 from BBAPT.src.data_prep import data_for_timesnet, data_prep
 from BBAPT.src.portfolio_env import PortfolioEnv
-
+from BBAPT.src.gridsearch import run_grid_search
 
 def init_wandb_run(config):
     try:
@@ -74,17 +74,36 @@ def main():
         test_starting_date="2022-06-08",
         test_ending_date="2023-01-03",
         THRESHOLD_PARAMETER=0.015,
-        oc_upper_threshold=0.01,
-        oc_lower_threshold=-0.01,
-        oc_k_loss=0.1,
-        oc_k_gain=0.1,
-        oc_n=0.725,
-        ra_upper_threshold=0.01,
-        ra_lower_threshold=-0.01,
-        ra_k_loss=0.1,
-        ra_k_gain=0.1,
-        ra_n=1.22,
+        #oc_upper_threshold=0.01,
+        #oc_lower_threshold=-0.01,
+        #oc_k_loss=0.1,
+        #oc_k_gain=0.1,
+        #oc_n=0.725,
+        #ra_upper_threshold=0.01,
+        #ra_lower_threshold=-0.01,
+        #ra_k_loss=0.1,
+        #ra_k_gain=0.1,
+        #ra_n=1.22,
     )
+
+    oc_params = {
+        'oc_upper_threshold': [0.01, 0.02, 0.03,0.04,0.05,0.06,0.07,0.08,0.09,0.10,0.12],
+        'oc_lower_threshold': [-0.01, -0.02, -0.03,-0.04,-0.05,-0.06,-0.07,-0.08,-0.09,-0.10,-0.12],
+        'oc_k_loss': [0.05,0.1, 0.2, 0.3,0.4,0.5,0.6,0.7,0.8,0.9,1],
+        'oc_k_gain': [0.05,0.1, 0.2, 0.3,0.4,0.5,0.6,0.7,0.8,0.9,1],
+        'oc_n': [1.05,1.1,1.15,1.2,1.25,1.3,1.35,1.40],
+    }
+
+    ra_params = {
+        'ra_upper_threshold': [0.0,0.01, 0.02, 0.03,0.04,0.05,0.06,0.07,0.08,0.09,0.1],
+        'ra_lower_threshold': [0.0,-0.01, -0.02, -0.03,-0.04,-0.05,-0.06,-0.07,-0.08,-0.09,-0.1],
+        'ra_k_loss': [0.05,0.1, 0.2, 0.3,0.4,0.5,0.6,0.7,0.8,0.9,1],
+        'ra_k_gain': [0.05,0.1, 0.2, 0.3,0.4,0.5,0.6,0.7,0.8,0.9,1],
+        'ra_n': [0.6,0.65,0.7,0.75,0.8,0.85,0.9,0.95],
+    }
+    #run once, find and then directly plug in values
+    run_grid_search(config, model_rl, forecast_fn, "ra", ra_params, val_fraction=0.20)
+    run_grid_search(config, model_rl, forecast_fn, "oc", oc_params, val_fraction=0.20)
 
     wandb_module = init_wandb_run(config)
     run_started_at = perf_counter()
@@ -176,6 +195,12 @@ def main():
 
         final_balance = float(info["balance"])
         sharpe_ratio = float(info['sharpe_ratio'])
+        rolling_sharpe = float(info['rolling_sharpe_ratio'])
+        FCR = float(info['FCR'])
+        ARR = float(info['ARR'])
+        AV = float(info['AV'])
+        MDD = float(info['MDD'])
+        
         print(f"Inference completed! Final portfolio balance: {final_balance:.2f}")
         log_wandb_metrics(
             wandb_module,
@@ -183,7 +208,13 @@ def main():
                 "eval/final_balance": final_balance,
                 "eval/final_profit": final_balance - config.initial_balance,
                 "run/duration_seconds": perf_counter() - run_started_at,
+                "eval/rolling_sharpe_ratio": rolling_sharpe,
                 "eval/sharpe_ratio": sharpe_ratio,
+                "eval/FCR" :FCR,
+                "eval/ARR" :ARR,
+                "eval/AV" :AV,
+                "eval/MDD" :MDD,
+                "eval/weights" :info['weights']
             },
         )
     except Exception as exc:

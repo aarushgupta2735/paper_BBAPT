@@ -1,6 +1,7 @@
 ##Building the Portfolio using DRL (A2C and PPO)
 import gymnasium as gym
 import numpy as np
+from scipy.special import softmax
 
 class PortfolioEnv(gym.Env):
     def __init__(self, data, config):
@@ -25,6 +26,9 @@ class PortfolioEnv(gym.Env):
         self.ra_k_gain = config.ra_k_gain
         self.ra_n = config.ra_n
 
+        self.sharpe_ratio_window = config.sharpe_ratio_window
+        self.returns_window = np.full((config.sharpe_ratio_window,),np.nan)
+
         self.dates = sorted(self.data['ds'].unique().tolist())
         self.initial_date = self.dates[0]
         self.date = self.initial_date
@@ -35,7 +39,14 @@ class PortfolioEnv(gym.Env):
         self.prev_action = np.ones(self.n_assets) / self.n_assets
         self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(self.n_assets, 1 + self.n_technical_indicators), dtype=np.float32)
 
-        self.sharpe_ratio = 0.0
+        self.rolling_sharpe_ratio = 0.0 # for reward
+        self.sharpe_ratio = 0.0 # for inference and comparision
+        self.FCR = 1
+        self.ARR = 0.0 #can be computed in the end
+        self.AV = 0.0
+        self.profits = np.array([])
+        self.weights = np.zeros((self.n_assets,))
+
     def _get_observation(self, date):
         current_row = self.data[self.data['ds'] == date].sort_values('unique_id')
         features = ['y'] + self.technical_indicators_list
@@ -44,30 +55,43 @@ class PortfolioEnv(gym.Env):
     def step(self, action):
         next_date = self.dates[self.current_step+1]
         current_row = self.data[self.data['ds'] == next_date].sort_values('unique_id')
-
         current_return = current_row['y'].to_numpy(dtype=np.float32)
-        variance = np.square(current_row['std_dev'].to_numpy(dtype=np.float32))
         
         profit = (np.multiply(np.transpose(action), current_return).sum()) - (np.transpose(np.abs(action - self.prev_action)) * self.transaction_cost).sum()
-        std = np.sqrt(np.multiply(np.multiply(action, variance), np.transpose(action)).sum())
-        reward = profit / std if std != 0 else 0
+        self.profits = np.append(self.profits, profit)
 
-        self.sharpe_ratio = (self.sharpe_ratio*(self.current_steps)+reward)/self.current_steps+1 
+        self.returns_window[self.current_step % self.sharpe_ratio_window] = profit
+        std = np.nanstd(self.returns_window)
+        mean = np.nanmean(self.returns_window)
+        
+        self.rolling_sharpe_ratio = mean/std if std!=0 else 0 
+        self.sharpe_ratio = self.profits.mean()/self.profits.std() if self.profits.std()!=0 else 0
+        self.FCR *= (1+profit)
+        self.ARR = ((self.balance/self.initial_balance)**(1/self.current_step))-1
+        self.weights = np.add(self.weights,action)
 
+        reward = self.rolling_sharpe_ratio
         self.balance += profit
-
         self.current_step += 1
-
         done = self.current_step>= self.n_steps
 
         if not done:
+            self.weights = np.normalize(self.weights)
             self.date = self.dates[self.current_step]
             next_observation = self._get_observation(self.date)
         else:
+            self.FCR -= 1
+            self.AV = std*sqrt(252)
+            self.weights = np.normalize(self.weights)
             next_observation = np.zeros((self.n_assets, 1 + self.n_technical_indicators), dtype=np.float32)
 
         self.prev_action = action
         return next_observation, reward, done, False, self._get_info()
+
+    def _compute_mdd(self):
+        running_max = np.maximum.accumulate(self.profits)
+        drawdown = (self.profits - running_max)/running_max
+        return drawdown.min()
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
@@ -78,5 +102,5 @@ class PortfolioEnv(gym.Env):
         return self._get_observation(self.date), self._get_info()
 
     def _get_info(self): 
-        ''' Returns the current balance and date as a dictionary. '''
-        return {'balance':self.balance, 'date':self.date, 'sharpe_ratio':self.sharpe_ratio} 
+        ''' Returns the current balance and date as a dictionary.'''
+        return {'balance':self.balance, 'date':self.date, 'sharpe_ratio':self.sharpe_ratio, 'rolling_sharpe_ratio':self.rolling_sharpe_ratio, 'FCR':self.FCR, 'ARR':self.ARR, 'AV':self.AV, 'MDD':self._compute_mdd(),"weights":self.weights} 

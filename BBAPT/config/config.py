@@ -11,6 +11,7 @@ class appConfig():
     train_ending_date:str = "2022-06-07"
     test_starting_date:str = "2022-06-08"
     test_ending_date:str = "2023-01-03"
+    sharpe_ratio_window:int = 22
     
     #PARAMETERS FOR BEHAVIOURAL MAPPING 
     THRESHOLD_PARAMETER:float = 0.015    
@@ -19,15 +20,15 @@ class appConfig():
     oc_lower_threshold: float = -0.01
     oc_k_loss: float = 0.1
     oc_k_gain: float = 0.1
-    oc_n: float = 0.725                 
+    oc_n: float = 1.22              
     #risk averse
     ra_upper_threshold: float = 0.01            
     ra_lower_threshold: float = -0.01   
     ra_k_loss: float = 0.1
     ra_k_gain: float = 0.1
-    ra_n: float = 1.22
+    ra_n: float = 0.725
 
     def __post_init__(self):
-        self.n_stocks = len(self.ticker_list)
+        self.n_stocks = len(self.tickers)
         self.n_indicators = len(self.technical_indicator_list) if self.technical_indicator_list is not None else 0
         self.ticker_list = sorted(self.tickers)
