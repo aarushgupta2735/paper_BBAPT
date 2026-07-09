@@ -13,7 +13,7 @@ from BBAPT.config.config import appConfig
 from BBAPT.src.behavioral_map import apply_behavioural_mapping
 from BBAPT.src.data_prep import data_for_timesnet, data_prep
 from BBAPT.src.portfolio_env import PortfolioEnv
-from BBAPT.src.gridsearch import run_grid_search
+from BBAPT.src.gridsearch import run_grid_search, make_timesnet_forecast_fn
 
 def init_wandb_run(config):
     try:
@@ -86,25 +86,6 @@ def main():
         #ra_n=1.22,
     )
 
-    oc_params = {
-        'oc_upper_threshold': [0.01, 0.02, 0.03,0.04,0.05,0.06,0.07,0.08,0.09,0.10,0.12],
-        'oc_lower_threshold': [-0.01, -0.02, -0.03,-0.04,-0.05,-0.06,-0.07,-0.08,-0.09,-0.10,-0.12],
-        'oc_k_loss': [0.05,0.1, 0.2, 0.3,0.4,0.5,0.6,0.7,0.8,0.9,1],
-        'oc_k_gain': [0.05,0.1, 0.2, 0.3,0.4,0.5,0.6,0.7,0.8,0.9,1],
-        'oc_n': [1.05,1.1,1.15,1.2,1.25,1.3,1.35,1.40],
-    }
-
-    ra_params = {
-        'ra_upper_threshold': [0.0,0.01, 0.02, 0.03,0.04,0.05,0.06,0.07,0.08,0.09,0.1],
-        'ra_lower_threshold': [0.0,-0.01, -0.02, -0.03,-0.04,-0.05,-0.06,-0.07,-0.08,-0.09,-0.1],
-        'ra_k_loss': [0.05,0.1, 0.2, 0.3,0.4,0.5,0.6,0.7,0.8,0.9,1],
-        'ra_k_gain': [0.05,0.1, 0.2, 0.3,0.4,0.5,0.6,0.7,0.8,0.9,1],
-        'ra_n': [0.6,0.65,0.7,0.75,0.8,0.85,0.9,0.95],
-    }
-    #run once, find and then directly plug in values
-    run_grid_search(config, model_rl, forecast_fn, "ra", ra_params, val_fraction=0.20)
-    run_grid_search(config, model_rl, forecast_fn, "oc", oc_params, val_fraction=0.20)
-
     wandb_module = init_wandb_run(config)
     run_started_at = perf_counter()
 
@@ -144,6 +125,7 @@ def main():
         )
         nf = NeuralForecast(models=[model], freq="D",)
         nf.fit(df=data_for_timesnet(train_df), val_size=1)
+
         log_wandb_metrics(
             wandb_module,
             {
@@ -177,6 +159,38 @@ def main():
                 "train/duration_seconds": train_duration_seconds,
             },
         )
+        #GRID SEARCH: run once, find and then directly plug in values
+        oc_params = {
+        'oc_upper_threshold': [0.01, 0.02, 0.03,0.04,0.05,0.06,0.07,0.08,0.09,0.10,0.12],
+        'oc_lower_threshold': [-0.01, -0.02, -0.03,-0.04,-0.05,-0.06,-0.07,-0.08,-0.09,-0.10,-0.12],
+        'oc_k_loss': [0.05,0.1, 0.2, 0.3,0.4,0.5,0.6,0.7,0.8,0.9,1],
+        'oc_k_gain': [0.05,0.1, 0.2, 0.3,0.4,0.5,0.6,0.7,0.8,0.9,1],
+        'oc_n': [1.05,1.1,1.15,1.2,1.25,1.3,1.35,1.40],
+        }
+
+        ra_params = {
+        'ra_upper_threshold': [0.0,0.01, 0.02, 0.03,0.04,0.05,0.06,0.07,0.08,0.09,0.1],
+        'ra_lower_threshold': [0.0,-0.01, -0.02, -0.03,-0.04,-0.05,-0.06,-0.07,-0.08,-0.09,-0.1],
+        'ra_k_loss': [0.05,0.1, 0.2, 0.3,0.4,0.5,0.6,0.7,0.8,0.9,1],
+        'ra_k_gain': [0.05,0.1, 0.2, 0.3,0.4,0.5,0.6,0.7,0.8,0.9,1],
+        'ra_n': [0.6,0.65,0.7,0.75,0.8,0.85,0.9,0.95],
+        }
+    
+        forecast_fn = make_timesnet_forecast_fn(nf=nf)
+
+        run_grid_search(config, model_rl, forecast_fn, "ra", ra_params, val_fraction=0.20)
+        run_grid_search(config, model_rl, forecast_fn, "oc", oc_params, val_fraction=0.20)
+        print("Grid search completed!")
+        print(f"oc_upper_threshold = {config.oc_upper_threshold}")
+        print(f"oc_lower_threshold = {config.oc_lower_threshold}")
+        print(f"oc_k_loss = {config.oc_k_loss}")
+        print(f"oc_k_gain = {config.oc_k_gain}")
+        print(f"oc_n = {config.oc_n}")
+        print(f"ra_upper_threshold = {config.ra_upper_threshold}")
+        print(f"ra_lower_threshold = {config.ra_lower_threshold}")
+        print(f"ra_k_loss = {config.ra_k_loss}")
+        print(f"ra_k_gain = {config.ra_k_gain}")
+        print(f"ra_n = {config.ra_n}")
 
         print("--- Running Inference ---")
         test_env = PortfolioEnv(data=test_df, config=config)
