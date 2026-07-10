@@ -192,7 +192,7 @@ def run_grid_search(
         param_dict = dict(zip(field_names, combo))
         trial_config = _apply_param_overrides(base_config, param_dict)
 
-        env = PortfolioEnv(data=val_df, config=trial_config)
+        env = PortfolioEnv(data=val_df, config=trial_config,already_weight=False)
         final_info = _run_walk_forward(model_rl, env, val_df, trial_config, forecast_fn)
         val_sharpe = float(final_info["sharpe_ratio"])
 

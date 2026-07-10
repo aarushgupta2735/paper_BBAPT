@@ -1,6 +1,7 @@
 def apply_behavioural_mapping(action, avg_portfolio_return, data,date,config): #forecast has the equal weighted portfolio return
     #new weights
     action = np.asarray(action)
+    action = np.softmax(action)
     n = 1
     if (avg_portfolio_return > config.THRESHOLD_PARAMETER):
         action = _apply_overconfidence(action,data,date,config)

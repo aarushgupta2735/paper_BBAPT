@@ -14,6 +14,10 @@ from BBAPT.src.behavioral_map import apply_behavioural_mapping
 from BBAPT.src.data_prep import data_for_timesnet, data_prep
 from BBAPT.src.portfolio_env import PortfolioEnv
 from BBAPT.src.gridsearch import run_grid_search, make_timesnet_forecast_fn
+from BBAPT.src.a2c import PortfolioActorCriticPolicy
+import torch.nn as nn
+
+
 
 def init_wandb_run(config):
     try:
@@ -47,28 +51,8 @@ def main():
         allow_short_selling=False,
         technical_indicator_list=["MACD", "RSI_14", "CCI_20", "SMA_20", "EMA_20"],
         transaction_cost=0.001,
-        ticker_list=[
-            "BTC-USD",
-            "ETH-USD",
-            "LTC-USD",
-            "LINK-USD",
-            "BCH-USD",
-            "UNI-USD",
-            "XLM-USD",
-            "FIL-USD",
-            "BNB-USD",
-            "SOL-USD",
-            "XRP-USD",
-            "ADA-USD",
-            "SHIB-USD",
-            "TON-USD",
-            "DOGE-USD",
-            "AVAX-USD",
-            "TRX-USD",
-            "DOT-USD",
-            "MATIC-USD",
-            "ETC-USD",
-        ],
+        ticker_list=["BTC-USD", "ETH-USD", "LTC-USD", "LINK-USD", "BCH-USD", "UNI-USD", "XLM-USD", "FIL-USD", "BNB-USD", "SOL-USD", "XRP-USD", "ADA-USD", "SHIB-USD", "TON-USD", "DOGE-USD", "AVAX-USD", "TRX-USD", "DOT-USD", "MATIC-USD", "ETC-USD"],
+
         train_starting_date="2020-09-22",
         train_ending_date="2022-06-07",
         test_starting_date="2022-06-08",
@@ -134,7 +118,7 @@ def main():
             },
         )
 
-        env = PortfolioEnv(data=train_df, config=config)
+        env = PortfolioEnv(data=train_df, config=config, already_weight = False)
         try:
             check_env(env.unwrapped)
             print("Environment passes all checks!")
@@ -147,8 +131,14 @@ def main():
             )
 
         print("--- Training RL Model ---")
+    
         train_started_at = perf_counter()
-        model_rl = A2C("MlpPolicy", env, verbose=1)
+        model_rl = A2C(PortfolioActorCriticPolicy, env, verbose=1,
+            policy_kwargs=dict(
+            net_arch=dict(pi=[320, 160, 80], vf=[64, 16, 4]),  # paper's Table 5, optional
+            activation_fn=nn.Tanh,                              # paper's shared-trunk activation
+        ),)
+
         model_rl.learn(total_timesteps=10000)
         train_duration_seconds = perf_counter() - train_started_at
         print("Training completed!")
@@ -193,7 +183,7 @@ def main():
         print(f"ra_n = {config.ra_n}")
 
         print("--- Running Inference ---")
-        test_env = PortfolioEnv(data=test_df, config=config)
+        test_env = PortfolioEnv(data=test_df, config=config, already_weight = True)
 
         obs, info = test_env.reset()
         done = False
@@ -201,8 +191,8 @@ def main():
 
         while not done:
             action, _states = model_rl.predict(obs)
-            forecast = nf.predict(df=data_for_timesnet(test_df[test_df["ds"] <= date]))
-            avg_return = forecast["TimesNet"].mean()
+            forecast = nf.predict(df=data_for_timesnet(test_df[test_df["ds"] <= date])) #TODO: compute once outside loop and then use 
+            avg_return = forecast["TimesNet"].mean() 
             action = apply_behavioural_mapping(action, avg_return, test_df, date, config)
             obs, reward, done, truncated, info = test_env.step(action)
             date = info["date"]
