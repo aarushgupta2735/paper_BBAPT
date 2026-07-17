@@ -6,7 +6,8 @@ import pandas as pd
 from neuralforecast import NeuralForecast
 from neuralforecast.losses.pytorch import DistributionLoss
 from neuralforecast.models import TimesNet
-from stable_baselines3 import A2C
+from stable_baselines3 import A2C, PPO, DDPG
+from stable_baselines3.common.callbacks import CheckpointCallback
 from gymnasium.utils.env_checker import check_env
 
 from BBAPT.config.config import appConfig
@@ -37,6 +38,7 @@ def init_wandb_run(config):
         entity=os.getenv("WANDB_ENTITY") or None,
         name=run_name,
         mode=os.getenv("WANDB_MODE", "offline"),
+        sync_tensorboard=True,
         config={
             **asdict(config),
             "n_stocks": config.n_stocks,
@@ -62,17 +64,21 @@ def main():
         train_ending_date="2022-06-07",
         test_starting_date="2022-06-08",
         test_ending_date="2023-01-03",
+
+        #config based on grid_search 
         THRESHOLD_PARAMETER=0.015,
-        #oc_upper_threshold=0.01,
-        #oc_lower_threshold=-0.01,
-        #oc_k_loss=0.1,
-        #oc_k_gain=0.1,
-        #oc_n=0.725,
-        #ra_upper_threshold=0.01,
-        #ra_lower_threshold=-0.01,
-        #ra_k_loss=0.1,
-        #ra_k_gain=0.1,
-        #ra_n=1.22,
+        oc_upper_threshold=0.01,
+        oc_lower_threshold=-0.01,
+        oc_k_loss=0.1,
+        oc_k_gain=0.1,
+        oc_n=0.725,
+        ra_upper_threshold=0.01,
+        ra_lower_threshold=-0.01,
+        ra_k_loss=0.1,
+        ra_k_gain=0.1,
+        ra_n=1.22,
+        tn_early_stop_patience_steps=-1,
+        rl_algorithm="A2C",
     )
 
     wandb_module = init_wandb_run(config)
@@ -135,25 +141,56 @@ def main():
                 {"env/check_passed": 0, "env/check_error": str(exc)},
             )
 
-        print("--- Training RL Model ---")
-    
-        train_started_at = perf_counter()
-        model_rl = A2C(PortfolioActorCriticPolicy, env, verbose=1,
-            policy_kwargs=dict(
-            net_arch=dict(pi=[320, 160, 80], vf=[64, 16, 4]),  # paper's Table 5, optional
-            activation_fn=nn.Tanh,                              # paper's shared-trunk activation
-        ),)
+        algo_class = {"A2C": A2C, "PPO": PPO, "DDPG": DDPG}[config.rl_algorithm]
+        model_hash = config.get_rl_config_hash()
+        model_path = f"./checkpoints/main/rl_model_{config.rl_algorithm}_{model_hash}_final.zip"
+        
+        if os.path.exists(model_path):
+            print(f"--- Loading existing {config.rl_algorithm} Model from {model_path} ---")
+            model_rl = algo_class.load(model_path, env=env)
+        else:
+            print(f"--- Training {config.rl_algorithm} Model ---")
+        
+            train_started_at = perf_counter()
+            
+            if config.rl_algorithm == "A2C":
+                model_rl = A2C(PortfolioActorCriticPolicy, env, verbose=1,
+                    tensorboard_log="./wandb_tb_logs/",
+                    policy_kwargs=dict(
+                    net_arch=dict(pi=[320, 160, 80], vf=[64, 16, 4]),
+                    activation_fn=nn.Tanh,
+                ),)
+            elif config.rl_algorithm == "PPO":
+                model_rl = PPO(PortfolioActorCriticPolicy, env, verbose=1,
+                    tensorboard_log="./wandb_tb_logs/",
+                    policy_kwargs=dict(
+                    net_arch=dict(pi=[320, 160, 80], vf=[64, 16, 4]),
+                    activation_fn=nn.Tanh,
+                ),)
+            elif config.rl_algorithm == "DDPG":
+                model_rl = DDPG("MlpPolicy", env, verbose=1,
+                    tensorboard_log="./wandb_tb_logs/",
+                    policy_kwargs=dict(
+                    net_arch=dict(pi=[320, 160, 80], qf=[64, 16, 4]),
+                    activation_fn=nn.Tanh,
+                ),)
 
-        model_rl.learn(total_timesteps=10000)
-        train_duration_seconds = perf_counter() - train_started_at
-        print("Training completed!")
-        log_wandb_metrics(
-            wandb_module,
-            {
-                "train/total_timesteps": 10000,
-                "train/duration_seconds": train_duration_seconds,
-            },
-        )
+            checkpoint_callback = CheckpointCallback(
+                save_freq=2500,
+                save_path="./checkpoints/main/",
+                name_prefix=f"rl_model_{config.rl_algorithm}_{model_hash}"
+            )
+            model_rl.learn(total_timesteps=10000, callback=checkpoint_callback)
+            model_rl.save(model_path.replace(".zip", ""))
+            train_duration_seconds = perf_counter() - train_started_at
+            print("Training completed!")
+            log_wandb_metrics(
+                wandb_module,
+                {
+                    "train/total_timesteps": 10000,
+                    "train/duration_seconds": train_duration_seconds,
+                },
+            )
         print("--- Using Configured Behavioral Hyperparameters ---")
         print(f"oc_upper_threshold = {config.oc_upper_threshold}")
         print(f"oc_lower_threshold = {config.oc_lower_threshold}")

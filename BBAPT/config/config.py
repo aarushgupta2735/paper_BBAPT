@@ -1,9 +1,12 @@
 from dataclasses import dataclass, field
+import hashlib
 
 @dataclass
 class appConfig():
     initial_balance: float = 100000
     allow_short_selling: bool = False
+    rl_algorithm: str = "A2C"
+    dataset: str = "crypto"
     technical_indicator_list: list = field(default_factory=lambda: ['MACD','RSI_14','CCI_20','SMA_20','EMA_20']) #,'ADX_14'
     transaction_cost: float = 0.001
     tickers: list[str]= field(default_factory=lambda: ["BTC-USD", "ETH-USD", "LTC-USD", "LINK-USD", "BCH-USD", "UNI-USD", "XLM-USD", "FIL-USD", "BNB-USD", "SOL-USD", "XRP-USD", "ADA-USD", "SHIB-USD", "TON-USD", "DOGE-USD", "AVAX-USD", "TRX-USD", "DOT-USD", "MATIC-USD", "ETC-USD"])
@@ -39,11 +42,16 @@ class appConfig():
     tn_learning_rate: float = 1e-3
     tn_max_steps: int = 100
     tn_val_check_steps: int = 50
-    tn_early_stop_patience_steps: int = 2
+    tn_early_stop_patience_steps: int = -1
     tn_enable_checkpointing: bool = True
 
     def __post_init__(self):
         self.n_stocks = len(self.tickers)
         self.n_indicators = len(self.technical_indicator_list) if self.technical_indicator_list is not None else 0
         self.ticker_list = sorted(self.tickers)
-        self.default_run_name = f"crypto_tc{self.transaction_cost}_rollingSharpeWindow{self.sharpe_ratio_window}"
+        self.default_run_name = f"{self.dataset}_tc{self.transaction_cost}_rollingSharpeWindow{self.sharpe_ratio_window}_{self.rl_algorithm}"
+
+    def get_rl_config_hash(self) -> str:
+        # Create a string representation of all parameters that affect the RL environment/model
+        hash_str = f"{self.dataset}_{self.rl_algorithm}_{self.initial_balance}_{self.allow_short_selling}_{self.transaction_cost}_{self.train_starting_date}_{self.train_ending_date}_{','.join(self.ticker_list)}_{','.join(self.technical_indicator_list)}"
+        return hashlib.md5(hash_str.encode('utf-8')).hexdigest()[:8]

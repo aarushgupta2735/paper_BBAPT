@@ -6,7 +6,8 @@ import pandas as pd
 from neuralforecast import NeuralForecast
 from neuralforecast.losses.pytorch import DistributionLoss
 from neuralforecast.models import TimesNet
-from stable_baselines3 import A2C
+from stable_baselines3 import A2C, PPO, DDPG
+from stable_baselines3.common.callbacks import CheckpointCallback
 from gymnasium.utils.env_checker import check_env
 import torch.nn as nn
 
@@ -35,6 +36,7 @@ def init_wandb_run(config):
         entity=os.getenv("WANDB_ENTITY") or None,
         name=run_name,
         mode=os.getenv("WANDB_MODE", "offline"),
+        sync_tensorboard=True,
         config={
             **asdict(config),
             "n_stocks": config.n_stocks,
@@ -61,6 +63,8 @@ def main():
         test_starting_date="2022-06-08",
         test_ending_date="2023-01-03",
         THRESHOLD_PARAMETER=0.015,
+        tn_early_stop_patience_steps=-1,
+        rl_algorithm="A2C",
     )
 
     wandb_module = init_wandb_run(config)
@@ -118,23 +122,54 @@ def main():
                 {"env/check_passed": 0, "env/check_error": str(exc)},
             )
 
-        print("--- Training RL Model for Grid Search ---")
-        train_started_at = perf_counter()
-        model_rl = A2C(PortfolioActorCriticPolicy, env, verbose=1,
-            policy_kwargs=dict(
-            net_arch=dict(pi=[320, 160, 80], vf=[64, 16, 4]),
-            activation_fn=nn.Tanh,
-        ),)
-        model_rl.learn(total_timesteps=10000)
-        train_duration_seconds = perf_counter() - train_started_at
-        print("Training completed!")
-        log_wandb_metrics(
-            wandb_module,
-            {
-                "train/total_timesteps": 10000,
-                "train/duration_seconds": train_duration_seconds,
-            },
-        )
+        algo_class = {"A2C": A2C, "PPO": PPO, "DDPG": DDPG}[config.rl_algorithm]
+        model_path = f"./checkpoints/gridsearch/rl_model_{config.rl_algorithm}_final.zip"
+        
+        if os.path.exists(model_path):
+            print(f"--- Loading existing {config.rl_algorithm} Model from {model_path} ---")
+            model_rl = algo_class.load(model_path, env=env)
+        else:
+            print(f"--- Training {config.rl_algorithm} Model for Grid Search ---")
+            train_started_at = perf_counter()
+            
+            if config.rl_algorithm == "A2C":
+                model_rl = A2C(PortfolioActorCriticPolicy, env, verbose=1,
+                    tensorboard_log="./wandb_tb_logs/",
+                    policy_kwargs=dict(
+                    net_arch=dict(pi=[320, 160, 80], vf=[64, 16, 4]),
+                    activation_fn=nn.Tanh,
+                ),)
+            elif config.rl_algorithm == "PPO":
+                model_rl = PPO(PortfolioActorCriticPolicy, env, verbose=1,
+                    tensorboard_log="./wandb_tb_logs/",
+                    policy_kwargs=dict(
+                    net_arch=dict(pi=[320, 160, 80], vf=[64, 16, 4]),
+                    activation_fn=nn.Tanh,
+                ),)
+            elif config.rl_algorithm == "DDPG":
+                model_rl = DDPG("MlpPolicy", env, verbose=1,
+                    tensorboard_log="./wandb_tb_logs/",
+                    policy_kwargs=dict(
+                    net_arch=dict(pi=[320, 160, 80], qf=[64, 16, 4]),
+                    activation_fn=nn.Tanh,
+                ),)
+            
+            checkpoint_callback = CheckpointCallback(
+                save_freq=2500,
+                save_path="./checkpoints/gridsearch/",
+                name_prefix=f"rl_model_{config.rl_algorithm}"
+            )
+            model_rl.learn(total_timesteps=10000, callback=checkpoint_callback)
+            model_rl.save(model_path.replace(".zip", ""))
+            train_duration_seconds = perf_counter() - train_started_at
+            print("Training completed!")
+            log_wandb_metrics(
+                wandb_module,
+                {
+                    "train/total_timesteps": 10000,
+                    "train/duration_seconds": train_duration_seconds,
+                },
+            )
 
         print("--- Computing Validation Forecasts ---")
         val_test_size = val_df['ds'].nunique()
@@ -186,6 +221,33 @@ def main():
         print("Best Overconfidence Parameters:")
         print(oc_results[0][0])
         print("========================================================\n")
+        
+        # Save best hyperparameters to CSV
+        import csv
+        from datetime import datetime
+        
+        csv_file = "best_hyperparameters.csv"
+        file_exists = os.path.exists(csv_file)
+        
+        best_ra = ra_results[0][0]
+        best_oc = oc_results[0][0]
+        
+        row_dict = {
+            "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "RL_Algorithm": config.rl_algorithm,
+            "Config_Hash": model_hash,
+            "RA_Val_Sharpe": ra_results[0][1],
+            "OC_Val_Sharpe": oc_results[0][1]
+        }
+        row_dict.update(best_ra)
+        row_dict.update(best_oc)
+        
+        with open(csv_file, mode="a", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=row_dict.keys())
+            if not file_exists:
+                writer.writeheader()
+            writer.writerow(row_dict)
+        print(f"Appended optimal parameters to {csv_file}")
         
     finally:
         if wandb_module is not None:
