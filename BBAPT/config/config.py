@@ -28,7 +28,22 @@ class appConfig():
     ra_k_gain: float = 0.1
     ra_n: float = 0.725
 
+    # TIMESNET HYPERPARAMETERS
+    tn_h: int = 1
+    tn_input_size: int = 24
+    tn_hidden_size: int = 16
+    tn_conv_hidden_size: int = 32
+    tn_loss_distribution: str = "Normal"
+    tn_loss_level: list = field(default_factory=lambda: [80, 90])
+    tn_scaler_type: str = "standard"
+    tn_learning_rate: float = 1e-3
+    tn_max_steps: int = 100
+    tn_val_check_steps: int = 50
+    tn_early_stop_patience_steps: int = 2
+    tn_enable_checkpointing: bool = True
+
     def __post_init__(self):
         self.n_stocks = len(self.tickers)
         self.n_indicators = len(self.technical_indicator_list) if self.technical_indicator_list is not None else 0
         self.ticker_list = sorted(self.tickers)
+        self.default_run_name = f"crypto_tc{self.transaction_cost}_rollingSharpeWindow{self.sharpe_ratio_window}"

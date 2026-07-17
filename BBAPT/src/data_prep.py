@@ -28,13 +28,13 @@ def add_technical_indicators(df,ticker):
     return df
 
 def data_prep(starting_date, ending_date,ticker_list):
-    data = yf.download("BTC-USD ETH-USD LTC-USD LINK-USD BCH-USD UNI-USD XLM-USD FIL-USD BNB-USD SOL-USD XRP-USD ADA-USD SHIB-USD TON-USD DOGE-USD AVAX-USD TRX-USD DOT-USD MATIC-USD ETC-USD", start=starting_date, end=ending_date)
+    data = yf.download(ticker_list, start=starting_date, end=ending_date)
     for ticker in ticker_list:
-        data[('Returns',ticker)] = data[('Close',ticker)] - data[('Close',ticker)].iloc[0] #Change in price from the first day of the data #TODO
+        data[('Returns',ticker)] = data[('Close',ticker)].pct_change(fill_method=None) #Change in price from the first day of the data #TODO
     data.columns.names = ['Attributes','Ticker']
     for ticker in ticker_list:
         data = add_technical_indicators(data,ticker)
-    data = data.stack(level = 'Ticker').reset_index()
+    data = data.stack(level='Ticker', future_stack=True).reset_index()
     data = data.sort_values(by = ['Date','Ticker'])
     data.rename(columns = {'Date':'ds', 'Returns':'y','Ticker':'unique_id'}, inplace = True)
     data = data[data['ds']!=data['ds'].min()]

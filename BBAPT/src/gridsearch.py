@@ -45,75 +45,12 @@ from BBAPT.src.portfolio_env import PortfolioEnv
 from BBAPT.src.behavioral_map import apply_behavioural_mapping
 
 
-def make_timesnet_forecast_fn(nf):
-    """
-    Build a forecast_fn backed by an ALREADY-FITTED NeuralForecast object,
-    calling it exactly the way main.py's inference loop does:
 
-        forecast = nf.predict(df=data_for_timesnet(history_df))
-        avg_return = forecast["TimesNet"].mean()
-
-    `nf` must already be fit (nf.fit(...) called once, upstream, on the
-    training data) - this function only ever calls .predict(), it never
-    refits. That keeps every grid cell scored against the identical
-    forecasting model, and avoids the cost of re-fitting TimesNet per
-    combination.
-
-    Walk-forward safety: `history_df` passed in by `_run_walk_forward` is
-    already sliced to `val_df[val_df['ds'] <= date]` - i.e. only data up to
-    and including the current date - so this function never sees future
-    rows. It relies on the caller to keep passing correctly-sliced history;
-    it does no slicing itself.
-    """
-
-    def forecast_fn(date, history_df):
-        forecast = nf.predict(df=data_for_timesnet(history_df))
-        return forecast["TimesNet"].mean()
-
-    return forecast_fn
-
-
-def make_validation_split(config, val_fraction: float = 0.20):
-    """
-    Carve the last `val_fraction` of the existing train window off as a
-    validation window. Returns (train_start, train_end, val_start, val_end)
-    as date strings, all still within the ORIGINAL train period - the real
-    test period (config.test_starting_date/test_ending_date) is untouched.
-    """
-    full_start = pd.Timestamp(config.train_starting_date)
-    full_end = pd.Timestamp(config.train_ending_date)
-    total_days = (full_end - full_start).days
-
-    val_days = int(round(total_days * val_fraction))
-    val_start = full_end - pd.Timedelta(days=val_days)
-
-    # inner-train end is the day before validation starts
-    inner_train_end = val_start - pd.Timedelta(days=1)
-
-    return (
-        full_start.strftime("%Y-%m-%d"),
-        inner_train_end.strftime("%Y-%m-%d"),
-        val_start.strftime("%Y-%m-%d"),
-        full_end.strftime("%Y-%m-%d"),
-    )
-
-
-def _run_walk_forward(model_rl, env, val_df, config, forecast_fn):
+def _run_walk_forward(model_rl, env, val_df, config, cv_df):
     """
     Run one frozen agent through one full walk-forward pass over `val_df`,
     applying the behavioral mapping at each step, and return the FINAL
     `info` dict once the episode ends.
-
-    The env now tracks its own expanding, full-episode Sharpe ratio
-    internally (info["sharpe_ratio"] - accumulated over `self.profits`
-    since reset()), separate from info["rolling_sharpe_ratio"] (the
-    windowed reward signal used for training). Since the expanding version
-    is already a whole-episode statistic, by the last step of the episode
-    it IS the full-period Sharpe (Eq. 16/24) - no need to reconstruct
-    profits or recompute anything here; we just read it off the last info.
-
-    `forecast_fn(date, data_so_far) -> avg_return` lets the caller plug in
-    whatever forecast source it wants (see make_timesnet_forecast_fn above).
     """
     obs, info = env.reset()
     done = False
@@ -121,7 +58,8 @@ def _run_walk_forward(model_rl, env, val_df, config, forecast_fn):
 
     while not done:
         action, _ = model_rl.predict(obs, deterministic=True)
-        avg_return = forecast_fn(date, val_df[val_df["ds"] <= date])
+        forecast = cv_df[cv_df["cutoff"] == date]
+        avg_return = forecast["TimesNet"].mean()
         action = apply_behavioural_mapping(action, avg_return, val_df, date, config)
         obs, reward, done, truncated, info = env.step(action)
         date = info["date"]
@@ -137,52 +75,17 @@ def _apply_param_overrides(config, param_dict):
 def run_grid_search(
     base_config,
     model_rl,
-    forecast_fn,
+    val_df,
+    cv_df,
     profile: str,
     param_grid: dict,
-    val_fraction: float = 0.20,
 ):
     """
     Grid-search one behavioral profile's hyperparameters against a
     validation split, using a single frozen trained agent.
-
-    Args:
-        base_config: the appConfig instance used for training (unmodified).
-        model_rl: a TRAINED, FROZEN stable-baselines3 model (e.g. A2C).
-            It is only used for .predict() here - never retrained.
-        forecast_fn: callable(date, history_df) -> avg_return, used in
-            place of TimesNet during the search (see note below).
-        profile: "loss_aversion" or "overconfidence" - which set of
-            config fields to sweep.
-        param_grid: dict mapping config field name -> list of candidate
-            values, e.g. {"ra_upper_threshold": [...], "ra_k_gain": [...]}.
-            Only fields relevant to the chosen profile should be passed;
-            all other behavioral fields are held at base_config's values.
-        val_fraction: fraction of the train window to carve off as
-            validation (see make_validation_split).
-
-    Returns:
-        (best_config, results) where results is a list of
-        (param_dict, val_sharpe) tuples for every combination tried,
-        sorted best-first.
-
-    NOTE on forecast_fn during search: re-running TimesNet training/
-    inference inside every grid cell would be extremely slow (TimesNet
-    training happens once, upstream, in main.py). Pass in a lightweight
-    stand-in here, e.g. a function that returns the trailing-N-day mean
-    return of the equally-weighted index as a proxy signal, OR reuse a
-    single already-fitted `nf: NeuralForecast` object's .predict() if you
-    want the exact same forecasts main.py would use at evaluation time.
-    Either way, forecast_fn is called identically across every grid cell,
-    so comparisons between cells remain fair.
     """
-    if profile not in ("loss_aversion", "overconfidence"):
+    if profile not in ("ra", "oc"):
         raise ValueError(f"Unknown profile: {profile!r}")
-
-    train_start, train_end, val_start, val_end = make_validation_split(
-        base_config, val_fraction
-    )
-    val_df = data_prep(val_start, val_end, base_config.ticker_list)
 
     field_names = list(param_grid.keys())
     value_lists = [param_grid[f] for f in field_names]
@@ -193,7 +96,7 @@ def run_grid_search(
         trial_config = _apply_param_overrides(base_config, param_dict)
 
         env = PortfolioEnv(data=val_df, config=trial_config,already_weight=False)
-        final_info = _run_walk_forward(model_rl, env, val_df, trial_config, forecast_fn)
+        final_info = _run_walk_forward(model_rl, env, val_df, trial_config, cv_df)
         val_sharpe = float(final_info["sharpe_ratio"])
 
         results.append((param_dict, val_sharpe))

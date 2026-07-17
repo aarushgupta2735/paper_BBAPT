@@ -46,6 +46,7 @@ class PortfolioEnv(gym.Env):
         self.ARR = 0.0 #can be computed in the end
         self.AV = 0.0
         self.profits = np.array([])
+        self.portfolio_close = np.array([config.initial_balance])
         self.weights = np.zeros((self.n_assets,))
 
     def _get_observation(self, date):
@@ -71,9 +72,9 @@ class PortfolioEnv(gym.Env):
         self.rolling_sharpe_ratio = mean/std if std!=0 else 0 
         self.sharpe_ratio = self.profits.mean()/self.profits.std() if self.profits.std()!=0 else 0
 
-
         reward = self.rolling_sharpe_ratio
         self.balance += profit
+        self.portfolio_close = np.append(self.portfolio_close, self.balance)
         self.current_step += 1
         self.FCR *= (1+profit)
         self.ARR = ((self.balance/self.initial_balance)**(1/self.current_step))-1
@@ -86,17 +87,17 @@ class PortfolioEnv(gym.Env):
         else:
             self.FCR -= 1
             self.AV = std*np.sqrt(252)
-            self.weights = np.softmax(self.weights)
+            self.weights = softmax(self.weights)
             next_observation = np.zeros((self.n_assets, 1 + self.n_technical_indicators), dtype=np.float32)
 
         self.prev_action = action
         return next_observation, reward, done, False, self._get_info()
 
     def _compute_mdd(self):
-        running_max = np.maximum.accumulate(self.profits)
-        drawdown = (self.profits - running_max)/running_max
-        return drawdown.min()
-
+        running_max = np.maximum.accumulate(self.portfolio_close)
+        drawdown = (self.portfolio_close - running_max)/running_max
+        return drawdown.min() * 100  
+        
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         self.rolling_sharpe_ratio = 0.0 # for reward
@@ -105,6 +106,7 @@ class PortfolioEnv(gym.Env):
         self.ARR = 0.0 #can be computed in the end
         self.AV = 0.0
         self.profits = np.array([])
+        self.portfolio_close = np.array([self.initial_balance])
         self.weights = np.zeros((self.n_assets,))
         self.prev_action = np.ones(self.n_assets) / self.n_assets
         self.date = self.initial_date
